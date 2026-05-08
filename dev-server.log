@@ -1,0 +1,60 @@
+
+> my-project@0.1.0 dev
+> next dev -p 3000
+
+▲ Next.js 16.2.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.229.127:3000
+- Environments: .env.local
+✓ Ready in 1369ms
+Creating turbopack project {
+  dir: 'C:\\Users\\spxph4227\\Downloads\\lh-request-new-ob',
+  testMode: true
+}
+
+ GET / 200 in 1279ms (next.js: 752ms, application-code: 527ms)
+ GET / 200 in 1235ms (next.js: 672ms, application-code: 563ms)
+ GET /dashboard 200 in 214ms (next.js: 146ms, application-code: 68ms)
+○ Compiling /api/sheets/pending-count ...
+ GET /api/sheets/pending-count 200 in 6.8s (next.js: 5.2s, application-code: 1573ms)
+ GET /api/sheets/requests 200 in 7.0s (next.js: 4.1s, application-code: 2.9s)
+ GET /outbound/lh-request 200 in 209ms (next.js: 115ms, application-code: 94ms)
+ GET /api/events 200 in 2.1s (next.js: 146ms, application-code: 1918ms)
+ GET /api/events 200 in 2.1s (next.js: 173ms, application-code: 1893ms)
+ GET /api/sheets/clusters 200 in 599ms (next.js: 129ms, application-code: 469ms)
+ GET /api/sheets/pending-count 200 in 17ms (next.js: 5ms, application-code: 12ms)
+ GET /api/sheets/requests 200 in 21ms (next.js: 8ms, application-code: 13ms)
+ GET /api/sheets/pending-count 200 in 13ms (next.js: 5ms, application-code: 8ms)
+ GET /api/sheets/requests 200 in 21ms (next.js: 10ms, application-code: 12ms)
+ POST /api/sheets/requests 201 in 916ms (next.js: 5ms, application-code: 911ms)
+ POST /api/events 200 in 486ms (next.js: 6ms, application-code: 479ms)
+ GET /api/sheets/pending-count 200 in 37ms (next.js: 5ms, application-code: 32ms)
+ GET /api/sheets/requests 200 in 727ms (next.js: 23ms, application-code: 704ms)
+ GET /api/sheets/pending-count 200 in 9ms (next.js: 5ms, application-code: 4ms)
+ GET /api/sheets/requests 200 in 9ms (next.js: 3ms, application-code: 5ms)
+ GET /api/sheets/pending-count 200 in 14ms (next.js: 7ms, application-code: 7ms)
+ GET /api/sheets/requests 200 in 18ms (next.js: 8ms, application-code: 10ms)
+ GET /api/sheets/pending-count 200 in 784ms (next.js: 5ms, application-code: 779ms)
+ GET /api/sheets/requests 200 in 714ms (next.js: 3ms, application-code: 711ms)
+ GET /api/sheets/pending-count 200 in 9ms (next.js: 4ms, application-code: 5ms)
+ GET /api/sheets/requests 200 in 7ms (next.js: 3ms, application-code: 4ms)
+ GET /api/sheets/pending-count 200 in 8ms (next.js: 3ms, application-code: 5ms)
+ GET /api/sheets/requests 200 in 10ms (next.js: 3ms, application-code: 7ms)
+ GET /api/sheets/requests 200 in 758ms (next.js: 3ms, application-code: 755ms)
+ GET /api/sheets/pending-count 200 in 805ms (next.js: 3ms, application-code: 802ms)
+ GET /api/sheets/requests 200 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET /api/sheets/pending-count 200 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET /api/sheets/requests 200 in 7ms (next.js: 3ms, application-code: 4ms)
+ GET /api/sheets/pending-count 200 in 7ms (next.js: 3ms, application-code: 4ms)
+ GET /api/sheets/requests 200 in 690ms (next.js: 5ms, application-code: 685ms)
+ GET /api/sheets/pending-count 200 in 580ms (next.js: 7ms, application-code: 573ms)
+ GET /api/sheets/requests 200 in 10ms (next.js: 5ms, application-code: 5ms)
+ GET /api/sheets/pending-count 200 in 14ms (next.js: 5ms, application-code: 9ms)
+ GET /api/sheets/requests 200 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET /api/sheets/pending-count 200 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET /api/sheets/pending-count 200 in 21ms (next.js: 11ms, application-code: 10ms)
+ GET /api/sheets/requests 200 in 13ms (next.js: 5ms, application-code: 8ms)
+ GET /api/events 200 in 78s (next.js: 217ms, application-code: 78s)
+ GET /api/events 200 in 78s (next.js: 190ms, application-code: 78s)
+ GET /api/events 200 in 76s (next.js: 10ms, application-code: 76s)
+[?25h
