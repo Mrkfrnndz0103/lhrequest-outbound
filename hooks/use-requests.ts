@@ -61,8 +61,7 @@ function requestMatchesFilters(request: LineHaulRequest, options?: UseRequestsOp
 function applyRequestToPage(
   current: RequestsResponse | undefined,
   request: LineHaulRequest,
-  options?: UseRequestsOptions,
-  eventType?: RequestEvent['type']
+  options?: UseRequestsOptions
 ) {
   if (!current) return current
 
@@ -166,7 +165,7 @@ export function useRequests(options?: UseRequestsOptions) {
         return
       }
 
-      mutate((current) => applyRequestToPage(current, request, options, event.type), { revalidate: false })
+      mutate((current) => applyRequestToPage(current, request, options), { revalidate: false })
       setLastUpdated(new Date(event.occurredAt))
     }, [options, mutate]),
     enabled,
