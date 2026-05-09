@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAdaptiveSWR } from './use-adaptive-swr'
 import { useRealtimeUpdates } from './use-realtime-updates'
 import type { PendingCount } from '@/lib/types'
@@ -17,6 +17,7 @@ import type { PendingCount } from '@/lib/types'
  */
 export function usePendingCount() {
   const prevCountsRef = useRef<PendingCount>({ pendingOps: 0, pendingMm: 0 })
+  const [sseConnectedState, setSseConnectedState] = useState(false)
   
   const { 
     data, 
@@ -26,10 +27,11 @@ export function usePendingCount() {
     resetPollingInterval,
     isPollingPaused,
   } = useAdaptiveSWR<PendingCount>(
-    '/api/supabase/pending-count',
+    '/api/azure/pending-count',
     {
       adaptivePolling: true,
       pauseWhenHidden: true,
+      realtimeConnected: sseConnectedState,
       // Custom hash to detect count changes
       dataHashFn: (data) => data ? `${data.pendingOps}-${data.pendingMm}` : '',
     }
@@ -42,6 +44,10 @@ export function usePendingCount() {
       mutate(newCounts, false)
     }, [mutate]),
   })
+
+  useEffect(() => {
+    setSseConnectedState(sseConnected)
+  }, [sseConnected])
 
   // Determine counts - prefer SSE if connected, fall back to SWR
   const pendingOps = sseConnected ? sseCounts.pendingOps : (data?.pendingOps ?? 0)

@@ -1,15 +1,6 @@
 # Linehaul Manager
 
-A Next.js 16 + React 19 dispatch management system for Shopee linehaul requests. The app uses Supabase as its backend data store.
-
-## Key Features
-
-- Role-based authentication for OPS PIC, FTE Ops, and FTE MM users
-- Supabase-backed request, user, and cluster tables
-- Request creation, FTE Ops approval/rejection, FTE MM assignment/rejection
-- Real-time pending request updates using Server-Sent Events
-- Event-driven request updates with a durable Supabase outbox table
-- Dashboard counts, recent activity, request filtering, and SWR polling
+A Next.js 16 + React 19 dispatch management system for linehaul requests. The app uses Azure Database for PostgreSQL as its backend data store.
 
 ## Tech Stack
 
@@ -18,8 +9,8 @@ A Next.js 16 + React 19 dispatch management system for Shopee linehaul requests.
 - TypeScript
 - Tailwind CSS
 - SWR
-- Supabase REST API
-- Radix UI components
+- Azure Database for PostgreSQL
+- `pg` PostgreSQL client
 - `pnpm` package manager
 
 ## Environment Setup
@@ -27,22 +18,31 @@ A Next.js 16 + React 19 dispatch management system for Shopee linehaul requests.
 Create `.env.local` in the project root:
 
 ```env
-SUPABASE_URL=https://your-project-ref.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+AZURE_POSTGRES_CONNECTION_STRING=postgresql://app_user:password@your-server.postgres.database.azure.com:5432/linehaul?sslmode=require
+POSTGRES_SSL=require
+POSTGRES_SSL_REJECT_UNAUTHORIZED=false
+POSTGRES_POOL_MAX=10
 AUTH_SESSION_SECRET=replace-with-a-long-random-secret
+EVENT_BUS_PROVIDER=local
+EVENT_BUS_POLL_INTERVAL_MS=1000
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
 ```
 
-## Supabase Setup
+`EVENT_BUS_PROVIDER=local` keeps the development SSE bridge in process memory. Use `EVENT_BUS_PROVIDER=azure-postgres` when multiple app instances need to receive request events through the durable `request_events` table.
 
-1. Open the Supabase SQL editor.
-2. Run `supabase/schema.sql`.
-3. Confirm these tables exist in the `public` schema:
-   - `clusters`
-   - `users`
-   - `requests`
-   - `request_events`
+Upstash variables are optional. Without them, login rate limiting uses an in-memory local fallback.
 
-The schema enables row level security and does not add public policies. The app API routes should use `SUPABASE_SERVICE_ROLE_KEY` server-side.
+## Azure Database Setup
+
+1. Create an Azure Database for PostgreSQL flexible server.
+2. Create a database for the app, for example `linehaul`.
+3. Allow your local IP address through the Azure database firewall.
+4. Run `azure/postgres-schema.sql` against the app database.
+5. Add seed rows to `public.users` and `public.clusters`.
+6. Put the Azure PostgreSQL connection string in `.env.local`.
+
+See `AZURE_DATABASE_SETUP_PLAIN_ENGLISH.md` for a non-technical setup walkthrough.
 
 ## Install and Run
 
@@ -62,44 +62,46 @@ pnpm start
 
 ## Data Layer
 
-- `lib/supabase.ts` builds authenticated Supabase REST requests.
-- `lib/supabase-database.ts` maps Supabase rows to the existing app types and exposes:
+- `lib/postgres.ts` owns the PostgreSQL connection pool and query wrapper.
+- `lib/azure-database.ts` maps PostgreSQL rows to app types and exposes:
   - `validateUser()`
   - `getClusters()`
   - `getRequests()`
   - `createRequest()`
   - `updateRequest()`
   - `getPendingCounts()`
-- `lib/request-events.ts` publishes request domain events to the local event bus and persists them to `request_events`.
+- `lib/request-events.ts` persists request events to `request_events`.
+- `lib/events/*` isolates the event bus. Local mode is best for development; Azure PostgreSQL polling mode is available for multi-instance deployments.
 
-## Scalability and Event Flow
-
-- Request creation and updates publish explicit events such as `request.created`, `request.approved`, and `request.assigned`.
-- `/api/events` exposes one SSE stream for connected browsers, broadcasts request events, and debounces pending-count refreshes after bursts of writes.
-- Request list polling is kept as a fallback, but successful SSE events trigger immediate SWR revalidation.
-- The `request_events` table acts as an outbox/audit log so a background worker, queue, or notification service can process request events independently.
-- For multi-instance production deployments, replace the in-memory subscriber set in `lib/request-events.ts` with Redis, Supabase Realtime, or a managed pub/sub adapter while keeping the same publish/subscribe interface.
-
-## Operational Quality
-
-- Performance: request list reads are capped and cacheable, count refreshes are debounced, SWR polling backs off behind SSE, and production builds no longer depend on downloading external Google font files.
-- Security: login sets a signed HTTP-only session cookie, API routes enforce authentication and role authorization, OPS PIC request reads are scoped to their own `opsPicId`, and global security headers are applied.
-- Usability: fetch failures now surface as real SWR errors instead of malformed successful responses, while development quick-login still creates a valid dev-only session.
-- Reliability: Supabase calls keep timeout/retry handling, SSE keeps heartbeat and polling fallback behavior, and event persistence is decoupled from the user-facing write response.
-- Scalability: the event outbox, request indexes, capped pagination, and SSE-driven revalidation reduce repeated database work as usage grows.
-- Maintainability: auth/session checks, JSON fetching, event publishing, and Supabase data mapping are centralized in small reusable modules.
 ## API Routes
 
 - `app/api/auth/login/route.ts` validates against the `users` table.
-- `app/api/supabase/clusters/route.ts` returns Supabase cluster data.
-- `app/api/supabase/requests/route.ts` lists and creates Supabase requests.
-- `app/api/supabase/requests/[id]/route.ts` updates Supabase requests.
-- `app/api/supabase/pending-count/route.ts` counts pending Supabase requests.
-- `app/api/events/route.ts` keeps the existing SSE update stream.
+- `app/api/azure/clusters/route.ts` returns cluster data.
+- `app/api/azure/requests/route.ts` lists and creates requests.
+- `app/api/azure/requests/[id]/route.ts` updates requests.
+- `app/api/azure/requests/export/route.ts` exports requests as CSV.
+- `app/api/azure/pending-count/route.ts` counts pending requests.
+- `app/api/events/route.ts` exposes the SSE update stream.
+
+## Request API Filtering
+
+`GET /api/azure/requests` supports these query parameters:
+
+```txt
+status
+dateFrom
+dateTo
+search
+plateNumber
+hubCluster
+region
+limit
+offset
+```
 
 ## Troubleshooting
 
-- If authentication fails, verify the `users` table values and login identifier format.
-- If API routes fail with `Supabase URL or service role key not configured`, check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-- If reads return empty data, confirm `supabase/schema.sql` was applied and the Supabase tables contain data.
-- If real-time count updates do not appear, check browser SSE connectivity to `/api/events`.
+- If startup fails with a database configuration error, check `AZURE_POSTGRES_CONNECTION_STRING`.
+- If database calls time out locally, confirm the Azure firewall allows your current IP address.
+- If authentication fails, verify that the `users` table contains the expected email or OPS ID.
+- If reads return empty data, confirm `azure/postgres-schema.sql` was applied and the tables contain data.

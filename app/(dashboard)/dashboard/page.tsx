@@ -7,6 +7,7 @@ import { useAuth } from '@/components/auth/auth-provider'
 import { usePendingCount } from '@/hooks/use-pending-count'
 import { useRequests } from '@/hooks/use-requests'
 import { useSound } from '@/components/notifications/sound-provider'
+import { RealtimeStatusBadge } from '@/components/realtime/realtime-status-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
@@ -49,7 +50,7 @@ const STATUS_ACCENTS: Record<RequestStatus, string> = {
 export default function DashboardPage() {
   const { user } = useAuth()
   const { pendingOps, pendingMm, isLoading: countLoading } = usePendingCount()
-  const { requests, isLoading: requestsLoading } = useRequests()
+  const { requests, isLoading: requestsLoading, realtime } = useRequests({ limit: 200 })
   const { hasPendingAlerts } = useSound()
 
   const dashboardData = useMemo(() => buildDashboardData(requests), [requests])
@@ -104,6 +105,7 @@ export default function DashboardPage() {
             dateLabel={dashboardData.dateLabel}
             roleLabel={roleLabel}
             userName={user?.name || 'User'}
+            realtimeMode={realtime.mode}
           />
         </div>
       </div>
@@ -154,11 +156,13 @@ function DashboardTopBar({
   dateLabel,
   roleLabel,
   userName,
+  realtimeMode,
 }: {
   alertCount: number
   dateLabel: string
   roleLabel: string
   userName: string
+  realtimeMode: 'connected' | 'reconnecting' | 'polling' | 'offline'
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
@@ -188,6 +192,7 @@ function DashboardTopBar({
             </span>
           )}
         </button>
+        <RealtimeStatusBadge mode={realtimeMode} className="bg-white" />
         <div className="flex min-w-0 max-w-full items-center gap-2 rounded-full bg-white py-1 pl-1 pr-3 shadow-sm">
           <div className="flex size-9 items-center justify-center rounded-full bg-[#201f1c] text-base font-semibold text-white">
             {userName.charAt(0).toUpperCase()}

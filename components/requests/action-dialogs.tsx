@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useClusters } from '@/hooks/use-clusters'
 import { Button } from '@/components/ui/button'
@@ -36,6 +37,20 @@ function DetailItem({ label, value, mono = false }: { label: string; value?: Rea
       <p className={cn("text-sm font-medium text-foreground", mono && "font-mono")}>{value || '-'}</p>
     </div>
   )
+}
+
+function getActionErrorMessage(data: unknown, fallback: string) {
+  if (data && typeof data === 'object') {
+    if ('code' in data && data.code === 'REQUEST_CONFLICT') {
+      return 'Request was already updated. Please refresh and try again.'
+    }
+
+    if ('error' in data && typeof data.error === 'string') {
+      return data.error
+    }
+  }
+
+  return fallback
 }
 
 export function RequestDetailsDialog({
@@ -155,7 +170,7 @@ export function RejectDialog({ request, open, onOpenChange, onSuccess }: BaseDia
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/supabase/requests/${request.id}`, {
+      const response = await fetch(`/api/azure/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -167,14 +182,17 @@ export function RejectDialog({ request, open, onOpenChange, onSuccess }: BaseDia
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to reject request')
+        throw new Error(getActionErrorMessage(data, 'Failed to reject request'))
       }
 
       setRemarks('')
       onSuccess()
+      toast.success(isMmReject ? 'Request rejected' : 'Request canceled')
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reject request')
+      const message = err instanceof Error ? err.message : 'Failed to reject request'
+      setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -262,7 +280,7 @@ export function AssignDialog({ request, open, onOpenChange, onSuccess }: BaseDia
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/supabase/requests/${request.id}`, {
+      const response = await fetch(`/api/azure/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -276,16 +294,19 @@ export function AssignDialog({ request, open, onOpenChange, onSuccess }: BaseDia
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to assign request')
+        throw new Error(getActionErrorMessage(data, 'Failed to assign request'))
       }
 
       setPlateNumber('')
       setLhTrip('')
       setRemarks('')
       onSuccess()
+      toast.success('Truck assigned')
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to assign request')
+      const message = err instanceof Error ? err.message : 'Failed to assign request'
+      setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -434,7 +455,7 @@ export function EditDialog({ request, open, onOpenChange, onSuccess }: BaseDialo
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/supabase/requests/${request.id}`, {
+      const response = await fetch(`/api/azure/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -450,13 +471,16 @@ export function EditDialog({ request, open, onOpenChange, onSuccess }: BaseDialo
 
       if (!response.ok) {
         const data = await response.json()
-        throw new Error(data.error || 'Failed to edit request')
+        throw new Error(getActionErrorMessage(data, 'Failed to edit request'))
       }
 
       onSuccess()
+      toast.success('Request updated')
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to edit request')
+      const message = err instanceof Error ? err.message : 'Failed to edit request'
+      setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }

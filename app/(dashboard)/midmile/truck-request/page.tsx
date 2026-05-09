@@ -6,11 +6,12 @@ import { Header } from '@/components/layout/header'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useRequests } from '@/hooks/use-requests'
 import { RequestsTable } from '@/components/requests/requests-table'
+import { RealtimeStatusBadge } from '@/components/realtime/realtime-status-badge'
 import { useSound } from '@/components/notifications/sound-provider'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Clock, CheckCircle, List, Truck } from 'lucide-react'
-import type { LineHaulRequest } from '@/lib/types'
+import type { LineHaulRequest, RequestStatus } from '@/lib/types'
 
 const RequestDetailsDialog = dynamic(
   () => import('@/components/requests/action-dialogs').then((mod) => mod.RequestDetailsDialog),
@@ -23,19 +24,57 @@ const RejectDialog = dynamic(() => import('@/components/requests/action-dialogs'
   ssr: false,
 })
 
+type TableFilters = {
+  search?: string
+  dateFrom?: string
+  dateTo?: string
+  status?: RequestStatus | 'all'
+}
+
+const PAGE_SIZE = 50
+
 export default function TruckRequestPage() {
   const { user } = useAuth()
-  const { requests, isLoading, mutate } = useRequests()
+  const [allFilters, setAllFilters] = useState<TableFilters>({})
+  const [allOffset, setAllOffset] = useState(0)
+  const [pendingFilters, setPendingFilters] = useState<TableFilters>({ status: 'PENDING_MM' })
+  const [pendingOffset, setPendingOffset] = useState(0)
+  const [confirmedFilters, setConfirmedFilters] = useState<TableFilters>({ status: 'CONFIRMED' })
+  const [confirmedOffset, setConfirmedOffset] = useState(0)
+  const allRequests = useRequests({
+    enabled: user?.role === 'FTE_MM',
+    search: allFilters.search,
+    dateFrom: allFilters.dateFrom,
+    dateTo: allFilters.dateTo,
+    status: allFilters.status && allFilters.status !== 'all' ? allFilters.status : undefined,
+    limit: PAGE_SIZE,
+    offset: allOffset,
+  })
+  const pendingMm = useRequests({
+    enabled: user?.role === 'FTE_MM',
+    search: pendingFilters.search,
+    dateFrom: pendingFilters.dateFrom,
+    dateTo: pendingFilters.dateTo,
+    status: 'PENDING_MM',
+    limit: PAGE_SIZE,
+    offset: pendingOffset,
+  })
+  const confirmed = useRequests({
+    enabled: user?.role === 'FTE_MM',
+    search: confirmedFilters.search,
+    dateFrom: confirmedFilters.dateFrom,
+    dateTo: confirmedFilters.dateTo,
+    status: 'CONFIRMED',
+    limit: PAGE_SIZE,
+    offset: confirmedOffset,
+  })
   const { playNotification } = useSound()
   
   const [selectedRequest, setSelectedRequest] = useState<LineHaulRequest | null>(null)
   const [showDetailsDialog, setShowDetailsDialog] = useState(false)
   const [showRejectDialog, setShowRejectDialog] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-
-  // Filter requests
-  const pendingMmRequests = requests.filter(r => r.status === 'PENDING_MM')
-  const confirmedRequests = requests.filter(r => r.status === 'CONFIRMED')
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const notifyRequestChange = () => {
     playNotification()
@@ -58,8 +97,14 @@ export default function TruckRequestPage() {
 
   const handleSuccess = () => {
     notifyRequestChange()
-    mutate()
+    setLastUpdated(new Date())
+    allRequests.mutate()
+    pendingMm.mutate()
+    confirmed.mutate()
   }
+
+  const displayLastUpdated = lastUpdated ?? allRequests.lastUpdated
+  const statusBadge = <RealtimeStatusBadge mode={allRequests.realtime.mode} />
 
   return (
     <>
@@ -70,9 +115,9 @@ export default function TruckRequestPage() {
             <TabsTrigger value="pending" className="gap-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               <Clock className="w-4 h-4" />
               Requested
-              {pendingMmRequests.length > 0 && (
+              {pendingMm.requests.length > 0 && (
                 <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400">
-                  {pendingMmRequests.length}
+                  {pendingMm.requests.length}
                 </span>
               )}
             </TabsTrigger>
@@ -95,7 +140,7 @@ export default function TruckRequestPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {pendingMmRequests.length === 0 && !isLoading ? (
+                {pendingMm.requests.length === 0 && !pendingMm.isLoading ? (
                   <div className="text-center py-12">
                     <Truck className="w-16 h-16 mx-auto mb-4 text-muted-foreground/50" />
                     <h3 className="text-lg font-medium text-foreground mb-2">No Requested Trucks</h3>
@@ -103,13 +148,23 @@ export default function TruckRequestPage() {
                   </div>
                 ) : (
                   <RequestsTable
-                    requests={pendingMmRequests}
-                    isLoading={isLoading}
+                    requests={pendingMm.requests}
+                    isLoading={pendingMm.isLoading}
                     userRole={user?.role || 'FTE_MM'}
                     onAssign={handleAssign}
                     onReject={handleReject}
                     onViewDetails={handleViewDetails}
                     filterStatus="PENDING_MM"
+                    lastUpdated={displayLastUpdated}
+                    realtimeStatus={statusBadge}
+                    serverSide
+                    filters={pendingFilters}
+                    pagination={pendingMm.pagination}
+                    onFiltersChange={(nextFilters) => {
+                      setPendingFilters({ ...nextFilters, status: 'PENDING_MM' })
+                      setPendingOffset(0)
+                    }}
+                    onOffsetChange={setPendingOffset}
                   />
                 )}
               </CardContent>
@@ -126,11 +181,21 @@ export default function TruckRequestPage() {
               </CardHeader>
               <CardContent>
                 <RequestsTable
-                  requests={confirmedRequests}
-                  isLoading={isLoading}
+                  requests={confirmed.requests}
+                  isLoading={confirmed.isLoading}
                   userRole={user?.role || 'FTE_MM'}
                   showActions={false}
                   filterStatus="CONFIRMED"
+                  lastUpdated={displayLastUpdated}
+                  realtimeStatus={statusBadge}
+                  serverSide
+                  filters={confirmedFilters}
+                  pagination={confirmed.pagination}
+                  onFiltersChange={(nextFilters) => {
+                    setConfirmedFilters({ ...nextFilters, status: 'CONFIRMED' })
+                    setConfirmedOffset(0)
+                  }}
+                  onOffsetChange={setConfirmedOffset}
                 />
               </CardContent>
             </Card>
@@ -146,12 +211,22 @@ export default function TruckRequestPage() {
               </CardHeader>
               <CardContent>
                 <RequestsTable
-                  requests={requests}
-                  isLoading={isLoading}
+                  requests={allRequests.requests}
+                  isLoading={allRequests.isLoading}
                   userRole={user?.role || 'FTE_MM'}
                   onAssign={handleAssign}
                   onReject={handleReject}
                   onViewDetails={handleViewDetails}
+                  lastUpdated={displayLastUpdated}
+                  realtimeStatus={statusBadge}
+                  serverSide
+                  filters={allFilters}
+                  pagination={allRequests.pagination}
+                  onFiltersChange={(nextFilters) => {
+                    setAllFilters(nextFilters)
+                    setAllOffset(0)
+                  }}
+                  onOffsetChange={setAllOffset}
                 />
               </CardContent>
             </Card>

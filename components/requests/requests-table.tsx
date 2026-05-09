@@ -15,8 +15,11 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Spinner } from '@/components/ui/spinner'
 import { REQUEST_STATUS_LABELS, REQUEST_STATUS_COLORS } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
+import { useRequestFilters, type RequestTableFilters } from '@/hooks/use-request-filters'
 import { Search, Download, Calendar, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { LineHaulRequest, RequestStatus, UserRole } from '@/lib/types'
 
@@ -32,6 +35,18 @@ interface RequestsTableProps {
   showActions?: boolean
   filterStatus?: RequestStatus
   tableMode?: 'default' | 'myRequests'
+  lastUpdated?: Date | null
+  realtimeStatus?: React.ReactNode
+  serverSide?: boolean
+  filters?: RequestTableFilters
+  pagination?: {
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
+  onFiltersChange?: (filters: RequestTableFilters) => void
+  onOffsetChange?: (offset: number) => void
+  actionLoadingId?: string | null
 }
 
 const ITEMS_PER_PAGE = 10
@@ -48,18 +63,50 @@ export function RequestsTable({
   showActions = true,
   filterStatus,
   tableMode = 'default',
+  lastUpdated,
+  realtimeStatus,
+  serverSide = false,
+  filters,
+  pagination,
+  onFiltersChange,
+  onOffsetChange,
+  actionLoadingId,
 }: RequestsTableProps) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>(filterStatus || 'all')
-  const [currentPage, setCurrentPage] = useState(1)
+  const [localPage, setLocalPage] = useState(1)
   const [highlightedRequestIds, setHighlightedRequestIds] = useState<Set<string>>(new Set())
   const previousStatusesRef = useRef<Map<string, RequestStatus>>(new Map())
   const hasTrackedStatusesRef = useRef(false)
+  const onFiltersChangeRef = useRef(onFiltersChange)
+  const initialFilters = {
+    ...filters,
+    status: filterStatus || filters?.status || 'all',
+  }
+  const {
+    filters: localFilters,
+    debouncedFilters,
+    setFilter,
+  } = useRequestFilters(initialFilters, 250)
+  const searchTerm = localFilters.search || ''
+  const dateFrom = localFilters.dateFrom || ''
+  const dateTo = localFilters.dateTo || ''
+  const statusFilter = localFilters.status || 'all'
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 250)
 
   const isMyRequestsTable = tableMode === 'myRequests'
   const visibleColumnCount = isMyRequestsTable ? 9 : showActions ? 10 : 9
+  const pageLimit = pagination?.limit ?? ITEMS_PER_PAGE
+  const currentPage = serverSide
+    ? Math.floor((pagination?.offset ?? 0) / pageLimit) + 1
+    : localPage
+
+  useEffect(() => {
+    onFiltersChangeRef.current = onFiltersChange
+  }, [onFiltersChange])
+
+  useEffect(() => {
+    if (!serverSide) return
+    onFiltersChangeRef.current?.(debouncedFilters)
+  }, [debouncedFilters, serverSide])
 
   // Safe date formatting function
   const formatRequestTime = (timeString: string) => {
@@ -136,11 +183,10 @@ export function RequestsTable({
     return () => window.clearTimeout(timeout)
   }, [isMyRequestsTable, requests])
 
-  // Filter requests
   let filteredRequests = requests
 
-  if (searchTerm) {
-    const search = searchTerm.toLowerCase()
+  if (!serverSide && debouncedSearchTerm) {
+    const search = debouncedSearchTerm.toLowerCase()
     filteredRequests = filteredRequests.filter(r =>
       r.plateNumber?.toLowerCase().includes(search) ||
       r.hubCluster.toLowerCase().includes(search) ||
@@ -148,7 +194,7 @@ export function RequestsTable({
     )
   }
 
-  if (dateFrom) {
+  if (!serverSide && dateFrom) {
     const fromDate = new Date(dateFrom)
     filteredRequests = filteredRequests.filter(r => {
       const requestDate = new Date(r.requestTime)
@@ -156,7 +202,7 @@ export function RequestsTable({
     })
   }
 
-  if (dateTo) {
+  if (!serverSide && dateTo) {
     const toDate = new Date(dateTo)
     toDate.setHours(23, 59, 59, 999)
     filteredRequests = filteredRequests.filter(r => {
@@ -165,19 +211,35 @@ export function RequestsTable({
     })
   }
 
-  if (statusFilter && statusFilter !== 'all') {
+  if (!serverSide && statusFilter && statusFilter !== 'all') {
     filteredRequests = filteredRequests.filter(r => r.status === statusFilter)
   }
 
-  // Pagination
-  const totalPages = Math.ceil(filteredRequests.length / ITEMS_PER_PAGE)
-  const paginatedRequests = filteredRequests.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  )
+  const totalPages = serverSide
+    ? pagination?.hasMore
+      ? currentPage + 1
+      : currentPage
+    : Math.ceil(filteredRequests.length / ITEMS_PER_PAGE)
+  const paginatedRequests = serverSide
+    ? filteredRequests
+    : filteredRequests.slice(
+        (localPage - 1) * ITEMS_PER_PAGE,
+        localPage * ITEMS_PER_PAGE
+      )
 
   // Export to CSV
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
+    if (serverSide) {
+      const params = new URLSearchParams()
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+
+      window.location.href = `/api/azure/requests/export${params.toString() ? `?${params}` : ''}`
+      return
+    }
+
     const headers = isMyRequestsTable
       ? ['Status', 'Request TS', 'Cluster', 'Region', 'Dock #', 'Backlogs', 'Truck Size', 'Plate #', 'Running Time']
       : ['ID', 'Request Time', 'Hub/Cluster', 'Region', 'Dock #', 'Backlogs', 'LH Type', 'Status', 'Plate #', 'Ops PIC']
@@ -231,15 +293,16 @@ export function RequestsTable({
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by Plate #, Hub, or ID..."
             value={searchTerm}
             onChange={(e) => {
-              setSearchTerm(e.target.value)
-              setCurrentPage(1)
+              setFilter('search', e.target.value)
+              setLocalPage(1)
+              onOffsetChange?.(0)
             }}
             className="pl-9 bg-secondary/30 border-border"
           />
@@ -252,8 +315,9 @@ export function RequestsTable({
               type="date"
               value={dateFrom}
               onChange={(e) => {
-                setDateFrom(e.target.value)
-                setCurrentPage(1)
+                setFilter('dateFrom', e.target.value)
+                setLocalPage(1)
+                onOffsetChange?.(0)
               }}
               className="pl-9 w-40 bg-secondary/30 border-border"
               placeholder="From"
@@ -265,8 +329,9 @@ export function RequestsTable({
               type="date"
               value={dateTo}
               onChange={(e) => {
-                setDateTo(e.target.value)
-                setCurrentPage(1)
+                setFilter('dateTo', e.target.value)
+                setLocalPage(1)
+                onOffsetChange?.(0)
               }}
               className="pl-9 w-40 bg-secondary/30 border-border"
               placeholder="To"
@@ -276,8 +341,9 @@ export function RequestsTable({
 
         {!filterStatus && (
           <Select value={statusFilter} onValueChange={(v) => {
-            setStatusFilter(v)
-            setCurrentPage(1)
+            setFilter('status', v as RequestStatus | 'all')
+            setLocalPage(1)
+            onOffsetChange?.(0)
           }}>
             <SelectTrigger className="w-40 bg-secondary/30 border-border">
               <Filter className="w-4 h-4 mr-2" />
@@ -299,6 +365,13 @@ export function RequestsTable({
           Export
         </Button>
       </div>
+
+      {(realtimeStatus || lastUpdated) && (
+        <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          {realtimeStatus}
+          {lastUpdated && <span>Last updated {format(lastUpdated, 'MMM d, HH:mm:ss')}</span>}
+        </div>
+      )}
 
       {/* Table */}
       <div className="rounded-lg border border-border overflow-hidden">
@@ -360,7 +433,7 @@ export function RequestsTable({
                     canTakeAction(request) && onViewDetails && "cursor-pointer animate-pulse"
                   )}
                   onClick={() => {
-                    if (canTakeAction(request)) {
+                    if (canTakeAction(request) && actionLoadingId !== request.id) {
                       onViewDetails?.(request)
                     }
                   }}
@@ -429,8 +502,9 @@ export function RequestsTable({
                               variant="ghost"
                               className="h-7 px-2 text-primary hover:text-primary hover:bg-primary/10"
                               onClick={() => onViewDetails(request)}
+                              disabled={actionLoadingId === request.id}
                             >
-                              View
+                              {actionLoadingId === request.id ? <Spinner /> : 'View'}
                             </Button>
                           ) : (
                             <>
@@ -441,14 +515,16 @@ export function RequestsTable({
                                     variant="ghost"
                                     className="h-7 px-2 text-green-400 hover:text-green-300 hover:bg-green-500/10"
                                     onClick={() => onApprove?.(request)}
+                                    disabled={actionLoadingId === request.id}
                                   >
-                                    Approve
+                                    {actionLoadingId === request.id ? <Spinner /> : 'Approve'}
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
                                     onClick={() => onReject?.(request)}
+                                    disabled={actionLoadingId === request.id}
                                   >
                                     Cancel
                                   </Button>
@@ -457,6 +533,7 @@ export function RequestsTable({
                                     variant="ghost"
                                     className="h-7 px-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
                                     onClick={() => onEdit?.(request)}
+                                    disabled={actionLoadingId === request.id}
                                   >
                                     Edit
                                   </Button>
@@ -469,6 +546,7 @@ export function RequestsTable({
                                     variant="ghost"
                                     className="h-7 px-2 text-green-400 hover:text-green-300 hover:bg-green-500/10"
                                     onClick={() => onAssign?.(request)}
+                                    disabled={actionLoadingId === request.id}
                                   >
                                     Assign
                                   </Button>
@@ -477,6 +555,7 @@ export function RequestsTable({
                                     variant="ghost"
                                     className="h-7 px-2 text-red-400 hover:text-red-300 hover:bg-red-500/10"
                                     onClick={() => onReject?.(request)}
+                                    disabled={actionLoadingId === request.id}
                                   >
                                     Cancel
                                   </Button>
@@ -499,13 +578,21 @@ export function RequestsTable({
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, filteredRequests.length)} of {filteredRequests.length} results
+            {serverSide
+              ? `Showing page ${currentPage}${pagination?.hasMore ? '' : ' (last page)'}`
+              : `Showing ${(localPage - 1) * ITEMS_PER_PAGE + 1} to ${Math.min(localPage * ITEMS_PER_PAGE, filteredRequests.length)} of ${filteredRequests.length} results`}
           </p>
           <div className="flex gap-1">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              onClick={() => {
+                if (serverSide) {
+                  onOffsetChange?.(Math.max(0, (pagination?.offset ?? 0) - pageLimit))
+                } else {
+                  setLocalPage(p => Math.max(1, p - 1))
+                }
+              }}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -526,7 +613,13 @@ export function RequestsTable({
                   key={pageNum}
                   variant={currentPage === pageNum ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setCurrentPage(pageNum)}
+                  onClick={() => {
+                    if (serverSide) {
+                      onOffsetChange?.((pageNum - 1) * pageLimit)
+                    } else {
+                      setLocalPage(pageNum)
+                    }
+                  }}
                   className="w-8"
                 >
                   {pageNum}
@@ -536,8 +629,14 @@ export function RequestsTable({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => {
+                if (serverSide) {
+                  onOffsetChange?.((pagination?.offset ?? 0) + pageLimit)
+                } else {
+                  setLocalPage(p => Math.min(totalPages, p + 1))
+                }
+              }}
+              disabled={serverSide ? !pagination?.hasMore : currentPage === totalPages}
             >
               <ChevronRight className="w-4 h-4" />
             </Button>

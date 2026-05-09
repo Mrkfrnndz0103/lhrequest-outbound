@@ -24,5 +24,6 @@ export const POLLING_INTERVAL = 3000 // 3 seconds base interval
 export const POLLING_INTERVAL_MIN = 3000 // 3 seconds minimum
 export const POLLING_INTERVAL_MAX = 30000 // 30 seconds maximum (backoff cap)
 export const POLLING_BACKOFF_MULTIPLIER = 1.5 // Increase interval by 50% when no changes
+export const REALTIME_SAFETY_REFRESH_INTERVAL = 60000 // 60 seconds when realtime is healthy
 
 export const LOGIN_DELAY = 5000 // 5 seconds before login modal appears

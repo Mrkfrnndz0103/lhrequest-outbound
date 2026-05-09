@@ -1,14 +1,28 @@
-import { supabaseCount, supabaseRequest } from './supabase'
+import { query, normalizeLikePattern } from './postgres'
+import { RequestConflictError, RequestNotFoundError } from './api-errors'
+import { getExpectedStatusForAction, getNextStatusForAction, type RequestAction } from './request-status'
 import type { Cluster, LHType, LineHaulRequest, RequestStatus, User, UserRole } from './types'
 
 type RequestFilters = {
   status?: RequestStatus
   dateFrom?: string
   dateTo?: string
+  search?: string
   plateNumber?: string
+  hubCluster?: string
+  region?: string
   opsPicId?: string
   limit?: number
   offset?: number
+}
+
+export type RequestsPage = {
+  requests: LineHaulRequest[]
+  pagination: {
+    limit: number
+    offset: number
+    hasMore: boolean
+  }
 }
 
 type UserRow = {
@@ -30,7 +44,7 @@ type ClusterRow = {
 
 type RequestRow = {
   id: string
-  request_time: string | null
+  request_time: Date | string | null
   hub_cluster: string | null
   region: string | null
   dock_number: string | null
@@ -40,59 +54,48 @@ type RequestRow = {
   ops_pic_id: string | null
   status: RequestStatus | string | null
   fte_ops_name: string | null
-  fte_ops_timestamp: string | null
+  fte_ops_timestamp: Date | string | null
   fte_ops_remarks: string | null
   plate_number: string | null
   fte_mm_name: string | null
-  fte_mm_timestamp: string | null
+  fte_mm_timestamp: Date | string | null
   fte_mm_remarks: string | null
   lh_trip: string | null
   is_docked: boolean | null
 }
 
-type RequestInsert = Omit<RequestRow,
-  | 'fte_ops_name'
-  | 'fte_ops_timestamp'
-  | 'fte_ops_remarks'
-  | 'plate_number'
-  | 'fte_mm_name'
-  | 'fte_mm_timestamp'
-  | 'fte_mm_remarks'
-  | 'lh_trip'
->
-
 const READ_CACHE_TTL_MS = 10000
 const STALE_READ_TTL_MS = 5 * 60 * 1000
 const CLUSTER_CACHE_TTL_MS = 10 * 60 * 1000
 const REQUEST_CACHE_TTL_MS = 5000
-const REQUEST_COLUMNS = [
-  'id',
-  'request_time',
-  'hub_cluster',
-  'region',
-  'dock_number',
-  'backlogs',
-  'lh_type',
-  'ops_pic_name',
-  'ops_pic_id',
-  'status',
-  'fte_ops_name',
-  'fte_ops_timestamp',
-  'fte_ops_remarks',
-  'plate_number',
-  'fte_mm_name',
-  'fte_mm_timestamp',
-  'fte_mm_remarks',
-  'lh_trip',
-  'is_docked',
-].join(',')
+const REQUEST_COLUMNS = `
+  id,
+  request_time,
+  hub_cluster,
+  region,
+  dock_number,
+  backlogs,
+  lh_type,
+  ops_pic_name,
+  ops_pic_id,
+  status,
+  fte_ops_name,
+  fte_ops_timestamp,
+  fte_ops_remarks,
+  plate_number,
+  fte_mm_name,
+  fte_mm_timestamp,
+  fte_mm_remarks,
+  lh_trip,
+  is_docked
+`
 
 let pendingCountsCache: { data: { pendingOps: number; pendingMm: number }; fetchedAt: number } | null = null
 let pendingCountsPromise: Promise<{ pendingOps: number; pendingMm: number }> | null = null
 let clustersCache: { data: Cluster[]; fetchedAt: number } | null = null
 let clustersPromise: Promise<Cluster[]> | null = null
-const requestsCache = new Map<string, { data: LineHaulRequest[]; fetchedAt: number }>()
-const requestsPromises = new Map<string, Promise<LineHaulRequest[]>>()
+const requestsCache = new Map<string, { data: RequestsPage; fetchedAt: number }>()
+const requestsPromises = new Map<string, Promise<RequestsPage>>()
 
 function isCacheFresh(fetchedAt: number) {
   return Date.now() - fetchedAt < READ_CACHE_TTL_MS
@@ -103,19 +106,19 @@ function invalidateReadCaches() {
   requestsCache.clear()
 }
 
-function parseDateString(dateStr: string | null): string {
-  if (!dateStr) return ''
+function parseDateString(value: Date | string | null): string {
+  if (!value) return ''
 
-  const date = new Date(dateStr)
-  return Number.isNaN(date.getTime()) ? dateStr : date.toISOString()
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString()
 }
 
 function optionalString(value: string | null): string | undefined {
   return value || undefined
 }
 
-function safeIlikePattern(value: string) {
-  return value.replaceAll('*', '').replaceAll('%', '').replaceAll(',', '')
+function likeValue(value: string) {
+  return `%${normalizeLikePattern(value)}%`
 }
 
 function toRequest(row: RequestRow): LineHaulRequest {
@@ -144,13 +147,12 @@ function toRequest(row: RequestRow): LineHaulRequest {
 
 export async function validateUser(identifier: string, loginType: 'fte' | 'backroom'): Promise<User | null> {
   const column = loginType === 'backroom' ? 'ops_id' : 'email'
-  const users = await supabaseRequest<UserRow[]>('users', {
-    select: 'id,name,ops_id,email,role',
-    [column]: `ilike.${safeIlikePattern(identifier)}`,
-    limit: 1,
-  })
+  const result = await query<UserRow>(
+    `select id, name, ops_id, email, role from public.users where ${column} ilike $1 limit 1`,
+    [identifier]
+  )
 
-  const user = users[0]
+  const user = result.rows[0]
   if (!user) return null
 
   if (loginType === 'backroom') {
@@ -175,15 +177,14 @@ export async function getClusters(): Promise<Cluster[]> {
     return clustersCache.data
   }
 
-  clustersPromise ??= supabaseRequest<ClusterRow[]>('clusters', {
-    select: 'id,name,region,column_d,column_e,column_f',
-    order: 'name.asc',
-  })
-    .then((rows) => {
+  clustersPromise ??= query<ClusterRow>(
+    'select id, name, region, column_d, column_e, column_f from public.clusters order by name asc'
+  )
+    .then((result) => {
       const seen = new Set<string>()
       const clusters: Cluster[] = []
 
-      for (const row of rows) {
+      for (const row of result.rows) {
         if (!row.name || seen.has(row.name)) continue
         seen.add(row.name)
         clusters.push({
@@ -212,7 +213,17 @@ export async function getClusters(): Promise<Cluster[]> {
   return clustersPromise
 }
 
-export async function getRequests(filters?: RequestFilters): Promise<LineHaulRequest[]> {
+function addWhere(
+  clauses: string[],
+  values: unknown[],
+  sql: string,
+  value: unknown
+) {
+  values.push(value)
+  clauses.push(sql.replace('?', `$${values.length}`))
+}
+
+export async function getRequests(filters?: RequestFilters): Promise<RequestsPage> {
   const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 200)
   const offset = Math.max(filters?.offset ?? 0, 0)
   const cacheKey = JSON.stringify({ ...filters, limit, offset })
@@ -225,45 +236,52 @@ export async function getRequests(filters?: RequestFilters): Promise<LineHaulReq
   const existingPromise = requestsPromises.get(cacheKey)
   if (existingPromise) return existingPromise
 
-  const query: [string, string][] = [
-    ['select', REQUEST_COLUMNS],
-    ['order', 'request_time.desc.nullslast,id.desc'],
-    ['limit', String(limit)],
-    ['offset', String(offset)],
-  ]
+  const clauses: string[] = []
+  const values: unknown[] = []
 
-  if (filters?.status) {
-    query.push(['status', `eq.${filters.status}`])
-  }
-
+  if (filters?.status) addWhere(clauses, values, 'status = ?', filters.status)
   if (filters?.dateFrom) {
     const fromDate = new Date(filters.dateFrom)
-    if (!Number.isNaN(fromDate.getTime())) {
-      query.push(['request_time', `gte.${fromDate.toISOString()}`])
-    }
+    if (!Number.isNaN(fromDate.getTime())) addWhere(clauses, values, 'request_time >= ?', fromDate)
   }
-
   if (filters?.dateTo) {
     const toDate = new Date(filters.dateTo)
     if (!Number.isNaN(toDate.getTime())) {
       toDate.setHours(23, 59, 59, 999)
-      query.push(['request_time', `lte.${toDate.toISOString()}`])
+      addWhere(clauses, values, 'request_time <= ?', toDate)
     }
   }
-
-  if (filters?.plateNumber) {
-    query.push(['plate_number', `ilike.*${safeIlikePattern(filters.plateNumber)}*`])
+  if (filters?.plateNumber) addWhere(clauses, values, "plate_number ilike ? escape '\\'", likeValue(filters.plateNumber))
+  if (filters?.hubCluster) addWhere(clauses, values, "hub_cluster ilike ? escape '\\'", likeValue(filters.hubCluster))
+  if (filters?.region) addWhere(clauses, values, 'region = ?', filters.region)
+  if (filters?.opsPicId) addWhere(clauses, values, 'ops_pic_id = ?', filters.opsPicId)
+  if (filters?.search) {
+    const value = likeValue(filters.search)
+    values.push(value)
+    const index = values.length
+    clauses.push(`(plate_number ilike $${index} escape '\\' or hub_cluster ilike $${index} escape '\\' or id ilike $${index} escape '\\')`)
   }
 
-  if (filters?.opsPicId) {
-    query.push(['ops_pic_id', `eq.${safeIlikePattern(filters.opsPicId)}`])
-  }
+  values.push(limit + 1, offset)
+  const whereSql = clauses.length ? `where ${clauses.join(' and ')}` : ''
 
-  const promise = supabaseRequest<RequestRow[]>('requests', query)
-    .then((rows) => {
-      const requests = rows.map(toRequest)
-      requestsCache.set(cacheKey, { data: requests, fetchedAt: Date.now() })
-      return requests
+  const promise = query<RequestRow>(
+    `select ${REQUEST_COLUMNS}
+     from public.requests
+     ${whereSql}
+     order by request_time desc nulls last, id desc
+     limit $${values.length - 1}
+     offset $${values.length}`,
+    values
+  )
+    .then((result) => {
+      const hasMore = result.rows.length > limit
+      const page = {
+        requests: result.rows.slice(0, limit).map(toRequest),
+        pagination: { limit, offset, hasMore },
+      }
+      requestsCache.set(cacheKey, { data: page, fetchedAt: Date.now() })
+      return page
     })
     .catch((error) => {
       if (cached && Date.now() - cached.fetchedAt < STALE_READ_TTL_MS) {
@@ -290,40 +308,36 @@ export async function createRequest(data: {
   opsPicId: string
 }): Promise<LineHaulRequest> {
   const id = `LH-${Date.now()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`
-  const requestTime = new Date().toISOString()
+  const requestTime = new Date()
 
-  const row: RequestInsert = {
-    id,
-    request_time: requestTime,
-    hub_cluster: data.hubCluster,
-    region: data.region,
-    dock_number: data.dockNumber,
-    backlogs: data.backlogs,
-    lh_type: data.lhType,
-    ops_pic_name: data.opsPicName,
-    ops_pic_id: data.opsPicId,
-    status: 'PENDING_OPS',
-    is_docked: false,
-  }
-
-  const inserted = await supabaseRequest<RequestRow[]>(
-    'requests',
-    { select: '*' },
-    {
-      method: 'POST',
-      headers: { Prefer: 'return=representation' },
-      body: JSON.stringify([row]),
-    }
+  const result = await query<RequestRow>(
+    `insert into public.requests (
+       id, request_time, hub_cluster, region, dock_number, backlogs, lh_type,
+       ops_pic_name, ops_pic_id, status, is_docked
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING_OPS', false)
+     returning ${REQUEST_COLUMNS}`,
+    [
+      id,
+      requestTime,
+      data.hubCluster,
+      data.region,
+      data.dockNumber,
+      data.backlogs,
+      data.lhType,
+      data.opsPicName,
+      data.opsPicId,
+    ]
   )
 
   invalidateReadCaches()
-  return toRequest(inserted[0])
+  return toRequest(result.rows[0])
 }
 
 export async function updateRequest(
   id: string,
   updates: {
-    action: 'approve' | 'reject_ops' | 'edit' | 'assign' | 'reject_mm'
+    action: RequestAction
     userName: string
     remarks?: string
     plateNumber?: string
@@ -335,64 +349,77 @@ export async function updateRequest(
     lhType?: LHType
   }
 ): Promise<LineHaulRequest> {
-  const timestamp = new Date().toISOString()
-  const patch: Partial<RequestRow> = {}
+  const timestamp = new Date()
+  const expectedStatus = getExpectedStatusForAction(updates.action)
+  const assignments: string[] = []
+  const values: unknown[] = []
+
+  function set(column: string, value: unknown) {
+    values.push(value)
+    assignments.push(`${column} = $${values.length}`)
+  }
 
   switch (updates.action) {
     case 'approve':
-      patch.status = 'PENDING_MM'
-      patch.fte_ops_name = updates.userName
-      patch.fte_ops_timestamp = timestamp
-      patch.fte_ops_remarks = updates.remarks || ''
+      set('status', getNextStatusForAction(updates.action))
+      set('fte_ops_name', updates.userName)
+      set('fte_ops_timestamp', timestamp)
+      set('fte_ops_remarks', updates.remarks || '')
       break
     case 'reject_ops':
-      patch.status = 'REJECTED_OPS'
-      patch.fte_ops_name = updates.userName
-      patch.fte_ops_timestamp = timestamp
-      patch.fte_ops_remarks = updates.remarks || ''
+      set('status', getNextStatusForAction(updates.action))
+      set('fte_ops_name', updates.userName)
+      set('fte_ops_timestamp', timestamp)
+      set('fte_ops_remarks', updates.remarks || '')
       break
     case 'edit':
-      if (updates.hubCluster !== undefined) patch.hub_cluster = updates.hubCluster
-      if (updates.region !== undefined) patch.region = updates.region
-      if (updates.dockNumber !== undefined) patch.dock_number = updates.dockNumber
-      if (updates.backlogs !== undefined) patch.backlogs = updates.backlogs
-      if (updates.lhType !== undefined) patch.lh_type = updates.lhType
+      set('status', getNextStatusForAction(updates.action))
+      if (updates.hubCluster !== undefined) set('hub_cluster', updates.hubCluster)
+      if (updates.region !== undefined) set('region', updates.region)
+      if (updates.dockNumber !== undefined) set('dock_number', updates.dockNumber)
+      if (updates.backlogs !== undefined) set('backlogs', updates.backlogs)
+      if (updates.lhType !== undefined) set('lh_type', updates.lhType)
       break
     case 'assign':
-      patch.status = 'CONFIRMED'
-      patch.plate_number = updates.plateNumber || ''
-      patch.fte_mm_name = updates.userName
-      patch.fte_mm_timestamp = timestamp
-      patch.fte_mm_remarks = updates.remarks || ''
-      patch.lh_trip = updates.lhTrip || ''
+      set('status', getNextStatusForAction(updates.action))
+      set('plate_number', updates.plateNumber || '')
+      set('fte_mm_name', updates.userName)
+      set('fte_mm_timestamp', timestamp)
+      set('fte_mm_remarks', updates.remarks || '')
+      set('lh_trip', updates.lhTrip || '')
       break
     case 'reject_mm':
-      patch.status = 'REJECTED_MM'
-      patch.fte_mm_name = updates.userName
-      patch.fte_mm_timestamp = timestamp
-      patch.fte_mm_remarks = updates.remarks || ''
+      set('status', getNextStatusForAction(updates.action))
+      set('fte_mm_name', updates.userName)
+      set('fte_mm_timestamp', timestamp)
+      set('fte_mm_remarks', updates.remarks || '')
       break
   }
 
-  const rows = await supabaseRequest<RequestRow[]>(
-    'requests',
-    [
-      ['id', `eq.${id}`],
-      ['select', '*'],
-    ],
-    {
-      method: 'PATCH',
-      headers: { Prefer: 'return=representation' },
-      body: JSON.stringify(patch),
-    }
+  values.push(id, expectedStatus)
+  const result = await query<RequestRow>(
+    `update public.requests
+     set ${assignments.join(', ')}
+     where id = $${values.length - 1} and status = $${values.length}
+     returning ${REQUEST_COLUMNS}`,
+    values
   )
 
-  if (!rows.length) {
-    throw new Error('Request not found')
+  if (!result.rows.length) {
+    const existing = await query<{ id: string; status: RequestStatus }>(
+      'select id, status from public.requests where id = $1 limit 1',
+      [id]
+    )
+
+    if (!existing.rows.length) {
+      throw new RequestNotFoundError()
+    }
+
+    throw new RequestConflictError()
   }
 
   invalidateReadCaches()
-  return toRequest(rows[0])
+  return toRequest(result.rows[0])
 }
 
 export async function getPendingCounts(options: { forceRefresh?: boolean } = {}): Promise<{ pendingOps: number; pendingMm: number }> {
@@ -400,12 +427,18 @@ export async function getPendingCounts(options: { forceRefresh?: boolean } = {})
     return pendingCountsCache.data
   }
 
-  pendingCountsPromise ??= Promise.all([
-    supabaseCount('requests', [['status', 'eq.PENDING_OPS']]),
-    supabaseCount('requests', [['status', 'eq.PENDING_MM']]),
-  ])
-    .then(([pendingOps, pendingMm]) => {
-      const data = { pendingOps, pendingMm }
+  pendingCountsPromise ??= query<{ status: RequestStatus; count: string }>(
+    `select status, count(*)::text as count
+     from public.requests
+     where status in ('PENDING_OPS', 'PENDING_MM')
+     group by status`
+  )
+    .then((result) => {
+      const data = { pendingOps: 0, pendingMm: 0 }
+      for (const row of result.rows) {
+        if (row.status === 'PENDING_OPS') data.pendingOps = Number(row.count)
+        if (row.status === 'PENDING_MM') data.pendingMm = Number(row.count)
+      }
       pendingCountsCache = { data, fetchedAt: Date.now() }
       return data
     })
@@ -436,5 +469,8 @@ export function getCachedRequests(filters?: RequestFilters) {
   const offset = Math.max(filters?.offset ?? 0, 0)
   const cacheKey = JSON.stringify({ ...filters, limit, offset })
 
-  return requestsCache.get(cacheKey)?.data ?? []
+  return requestsCache.get(cacheKey)?.data ?? {
+    requests: [],
+    pagination: { limit, offset, hasMore: false },
+  }
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCachedPendingCounts, getPendingCounts } from '@/lib/supabase-database'
+import { getCachedPendingCounts, getPendingCounts } from '@/lib/azure-database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { withTimeout } from '@/lib/api-timeout'
-import { SupabaseRestError } from '@/lib/supabase'
+import { handleApiError } from '@/lib/api-errors'
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,16 +20,6 @@ export async function GET(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error fetching pending counts:', error)
-    if (error instanceof SupabaseRestError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status }
-      )
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to fetch pending counts' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Failed to fetch pending counts')
   }
 }

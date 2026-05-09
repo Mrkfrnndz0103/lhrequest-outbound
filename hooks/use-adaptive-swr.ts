@@ -8,6 +8,7 @@ import {
   POLLING_INTERVAL_MIN,
   POLLING_INTERVAL_MAX,
   POLLING_BACKOFF_MULTIPLIER,
+  REALTIME_SAFETY_REFRESH_INTERVAL,
 } from '@/lib/constants'
 
 interface UseAdaptiveSWROptions<T> extends Omit<SWRConfiguration<T>, 'refreshInterval'> {
@@ -15,6 +16,8 @@ interface UseAdaptiveSWROptions<T> extends Omit<SWRConfiguration<T>, 'refreshInt
   adaptivePolling?: boolean
   /** Pause polling when tab is hidden */
   pauseWhenHidden?: boolean
+  /** Use only a low-frequency safety refresh while realtime is healthy */
+  realtimeConnected?: boolean
   /** Custom hash function to detect data changes */
   dataHashFn?: (data: T | undefined) => string
 }
@@ -33,6 +36,7 @@ export function useAdaptiveSWR<T>(
   const {
     adaptivePolling = true,
     pauseWhenHidden = true,
+    realtimeConnected = false,
     dataHashFn,
     ...swrOptions
   } = options
@@ -59,8 +63,11 @@ export function useAdaptiveSWR<T>(
     if (pauseWhenHidden && !isVisible) {
       return 0
     }
+    if (realtimeConnected) {
+      return REALTIME_SAFETY_REFRESH_INTERVAL
+    }
     return currentIntervalRef.current
-  }, [isVisible, pauseWhenHidden])
+  }, [isVisible, pauseWhenHidden, realtimeConnected])
 
   const result = useSWR<T>(key, fetchJson, {
     refreshInterval,

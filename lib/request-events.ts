@@ -1,4 +1,5 @@
-import { supabaseRequest } from './supabase'
+import { query } from './postgres'
+import { getEventBus } from './events'
 import type { LineHaulRequest, RequestStatus } from './types'
 
 export type RequestEventType =
@@ -24,10 +25,6 @@ export type RequestEvent = {
   occurredAt: string
 }
 
-type EventSubscriber = (event: RequestEvent) => void
-
-const subscribers = new Set<EventSubscriber>()
-
 function createEventId() {
   return `evt_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
 }
@@ -51,32 +48,28 @@ function toActionEventType(action: string): RequestEventType {
 
 async function persistEvent(event: RequestEvent) {
   try {
-    await supabaseRequest(
-      'request_events',
-      undefined,
-      {
-        method: 'POST',
-        body: JSON.stringify([{
-          id: event.id,
-          event_type: event.type,
-          request_id: event.payload.requestId,
-          payload: event.payload,
-          occurred_at: event.occurredAt,
-          processed_at: null,
-        }]),
-      }
+    await query(
+      `insert into public.request_events (
+         id, event_type, request_id, payload, occurred_at, processed_at
+       )
+       values ($1, $2, $3, $4, $5, null)`,
+      [
+        event.id,
+        event.type,
+        event.payload.requestId,
+        event.payload,
+        event.occurredAt,
+      ]
     )
+    return true
   } catch (error) {
     console.error('Failed to persist request event:', error)
+    return false
   }
 }
 
-export function subscribeToRequestEvents(subscriber: EventSubscriber) {
-  subscribers.add(subscriber)
-
-  return () => {
-    subscribers.delete(subscriber)
-  }
+export function subscribeToRequestEvents(subscriber: (event: RequestEvent) => void) {
+  return getEventBus().subscribe(subscriber)
 }
 
 export async function publishRequestEvent(
@@ -90,15 +83,8 @@ export async function publishRequestEvent(
     occurredAt: new Date().toISOString(),
   }
 
-  subscribers.forEach((subscriber) => {
-    try {
-      subscriber(event)
-    } catch (error) {
-      console.error('Request event subscriber failed:', error)
-    }
-  })
-
-  void persistEvent(event)
+  await persistEvent(event)
+  await getEventBus().publish(event)
   return event
 }
 

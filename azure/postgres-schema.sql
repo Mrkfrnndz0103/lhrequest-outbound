@@ -1,4 +1,4 @@
-create extension if not exists pg_trgm with schema extensions;
+create extension if not exists pg_trgm;
 
 create table if not exists public.clusters (
   id text primary key,
@@ -11,10 +11,6 @@ create table if not exists public.clusters (
   updated_at timestamptz not null default now(),
   unique (name)
 );
-
-alter table public.clusters add column if not exists column_d text;
-alter table public.clusters add column if not exists column_e text;
-alter table public.clusters add column if not exists column_f text;
 
 create table if not exists public.users (
   id text primary key,
@@ -63,11 +59,18 @@ create table if not exists public.request_events (
 
 create index if not exists requests_status_idx on public.requests (status);
 create index if not exists requests_request_time_idx on public.requests (request_time desc);
-create index if not exists requests_status_request_time_idx on public.requests (status, request_time desc);
-create index if not exists requests_ops_pic_id_request_time_idx on public.requests (ops_pic_id, request_time desc);
-create index if not exists requests_plate_number_trgm_idx on public.requests using gin (plate_number gin_trgm_ops);
+create index if not exists idx_requests_status_request_time on public.requests (status, request_time desc);
+create index if not exists idx_requests_ops_pic_id_request_time on public.requests (ops_pic_id, request_time desc);
+create index if not exists idx_requests_plate_number on public.requests (plate_number);
+create index if not exists idx_requests_plate_number_trgm on public.requests using gin (plate_number gin_trgm_ops);
+create index if not exists idx_requests_hub_cluster_request_time on public.requests (hub_cluster, request_time desc);
+create index if not exists idx_requests_hub_cluster_trgm on public.requests using gin (hub_cluster gin_trgm_ops);
+create index if not exists idx_requests_id_trgm on public.requests using gin (id gin_trgm_ops);
+create index if not exists idx_requests_region_request_time on public.requests (region, request_time desc);
 create index if not exists clusters_name_idx on public.clusters (name);
-create index if not exists request_events_request_id_occurred_at_idx on public.request_events (request_id, occurred_at desc);
+create index if not exists idx_request_events_request_id_occurred_at on public.request_events (request_id, occurred_at desc);
+create index if not exists idx_request_events_processed_at_occurred_at on public.request_events (processed_at, occurred_at asc);
+create index if not exists idx_request_events_occurred_at_id on public.request_events (occurred_at asc, id asc);
 create index if not exists request_events_processed_at_idx on public.request_events (processed_at) where processed_at is null;
 
 create or replace function public.set_updated_at()
@@ -94,8 +97,3 @@ drop trigger if exists set_requests_updated_at on public.requests;
 create trigger set_requests_updated_at
 before update on public.requests
 for each row execute function public.set_updated_at();
-
-alter table public.clusters enable row level security;
-alter table public.users enable row level security;
-alter table public.requests enable row level security;
-alter table public.request_events enable row level security;

@@ -6,8 +6,11 @@ export const AUTH_COOKIE_NAME = 'linehaul_session'
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8
 
 type SessionPayload = User & {
+  iat: number
   exp: number
 }
+
+const VALID_ROLES = new Set(['OPS_PIC', 'FTE_OPS', 'FTE_MM'])
 
 function base64UrlEncode(value: string) {
   return Buffer.from(value).toString('base64url')
@@ -18,9 +21,10 @@ function base64UrlDecode(value: string) {
 }
 
 function getSessionSecret() {
-  const secret = process.env.AUTH_SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY
+  const secret = process.env.AUTH_SESSION_SECRET
+
   if (!secret) {
-    throw new Error('AUTH_SESSION_SECRET or SUPABASE_SERVICE_ROLE_KEY must be configured')
+    throw new Error('AUTH_SESSION_SECRET must be configured')
   }
   return secret
 }
@@ -37,9 +41,11 @@ function signaturesMatch(actual: string, expected: string) {
 }
 
 export function createSessionToken(user: User) {
+  const now = Math.floor(Date.now() / 1000)
   const payload: SessionPayload = {
     ...user,
-    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    iat: now,
+    exp: now + SESSION_MAX_AGE_SECONDS,
   }
   const encodedPayload = base64UrlEncode(JSON.stringify(payload))
 
@@ -56,7 +62,18 @@ export function readSessionToken(token?: string): User | null {
 
   try {
     const payload = JSON.parse(base64UrlDecode(encodedPayload)) as SessionPayload
-    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+    const now = Math.floor(Date.now() / 1000)
+
+    if (!payload.exp || payload.exp < now || !payload.iat || payload.iat > now + 60) {
+      return null
+    }
+
+    if (
+      typeof payload.name !== 'string' ||
+      (payload.opsId !== null && typeof payload.opsId !== 'string') ||
+      (payload.email !== null && typeof payload.email !== 'string') ||
+      !VALID_ROLES.has(payload.role)
+    ) {
       return null
     }
 

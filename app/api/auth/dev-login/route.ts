@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { setAuthCookie } from '@/lib/auth-session'
+import { notFoundError, validationError } from '@/lib/api-errors'
 import type { User, UserRole } from '@/lib/types'
 
 const TEST_USERS: Record<UserRole, User> = {
@@ -25,14 +26,14 @@ const TEST_USERS: Record<UserRole, User> = {
 
 export async function POST(request: NextRequest) {
   if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return notFoundError()
   }
 
   const { role } = await request.json().catch(() => ({ role: undefined }))
   const user = TEST_USERS[role as UserRole]
 
   if (!user) {
-    return NextResponse.json({ error: 'Invalid test role' }, { status: 400 })
+    return validationError('Invalid test role')
   }
 
   const response = NextResponse.json({ user })

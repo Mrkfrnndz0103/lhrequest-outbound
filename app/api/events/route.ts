@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
-import { getPendingCounts } from '@/lib/supabase-database'
+import { getPendingCounts } from '@/lib/azure-database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
+import { handleApiError, validationError } from '@/lib/api-errors'
 import { subscribeToRequestEvents, type RequestEvent } from '@/lib/request-events'
 
 // Store for connected clients - in production, use Redis pub/sub
@@ -27,14 +28,9 @@ export function broadcastUpdate(data: { type: string; payload: unknown }) {
 }
 
 function broadcastRequestEvent(event: RequestEvent) {
-  const { request: _request, ...payload } = event.payload
-
   broadcastUpdate({
     type: 'request_event',
-    payload: {
-      ...event,
-      payload,
-    },
+    payload: event,
   })
 }
 
@@ -122,7 +118,7 @@ export async function GET(request: NextRequest) {
   // Check for SSE support
   const accept = request.headers.get('accept')
   if (!accept?.includes('text/event-stream')) {
-    return new Response('SSE not supported', { status: 400 })
+    return validationError('SSE not supported')
   }
 
   let controller: ReadableStreamDefaultController
@@ -196,6 +192,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ success: true })
   } catch (error) {
     console.error('Broadcast error:', error)
-    return Response.json({ error: 'Failed to broadcast' }, { status: 500 })
+    return handleApiError(error, 'Failed to broadcast')
   }
 }

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCachedClusters, getClusters } from '@/lib/supabase-database'
+import { getCachedClusters, getClusters } from '@/lib/azure-database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { withTimeout } from '@/lib/api-timeout'
-import { SupabaseRestError } from '@/lib/supabase'
+import { handleApiError } from '@/lib/api-errors'
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,16 +20,6 @@ export async function GET(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error fetching clusters:', error)
-    if (error instanceof SupabaseRestError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: error.status }
-      )
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to fetch clusters' },
-      { status: 500 }
-    )
+    return handleApiError(error, 'Failed to fetch clusters')
   }
 }

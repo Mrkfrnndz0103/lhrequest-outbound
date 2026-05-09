@@ -45,15 +45,32 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectAttemptsRef = useRef(0)
+  const callbacksRef = useRef({
+    onNewOpsRequest,
+    onNewMmRequest,
+    onCountsUpdate,
+    onRequestEvent,
+  })
   const maxReconnectAttempts = 5
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [counts, setCounts] = useState<PendingCount>({ pendingOps: 0, pendingMm: 0 })
 
+  useEffect(() => {
+    callbacksRef.current = {
+      onNewOpsRequest,
+      onNewMmRequest,
+      onCountsUpdate,
+      onRequestEvent,
+    }
+  }, [onCountsUpdate, onNewMmRequest, onNewOpsRequest, onRequestEvent])
+
   const connect = useCallback(() => {
     if (!enabled || typeof window === 'undefined') return
+    if (eventSourceRef.current?.readyState === EventSource.OPEN || eventSourceRef.current?.readyState === EventSource.CONNECTING) {
+      return
+    }
 
-    // Clean up existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
     }
@@ -82,20 +99,19 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
               pendingMm: data.payload.pendingMm,
             }
             setCounts(newCounts)
-            onCountsUpdate?.(newCounts)
+            callbacksRef.current.onCountsUpdate?.(newCounts)
 
-            // Trigger callbacks for new requests
             if (data.payload.hasNewOps) {
-              onNewOpsRequest?.()
+              callbacksRef.current.onNewOpsRequest?.()
             }
             if (data.payload.hasNewMm) {
-              onNewMmRequest?.()
+              callbacksRef.current.onNewMmRequest?.()
             }
             return
           }
 
           if (data.type === 'request_event') {
-            onRequestEvent?.(data.payload)
+            callbacksRef.current.onRequestEvent?.(data.payload)
           }
         } catch (error) {
           console.error('SSE message parse error:', error)
@@ -123,13 +139,15 @@ export function useRealtimeUpdates(options: UseRealtimeUpdatesOptions = {}) {
       }
     } catch (error) {
       console.error('SSE connection error:', error)
+      setIsConnected(false)
       setConnectionError('SSE not supported. Using fallback polling.')
     }
-  }, [enabled, isVisible, onCountsUpdate, onNewOpsRequest, onNewMmRequest, onRequestEvent])
+  }, [enabled, isVisible])
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
     }
     if (eventSourceRef.current) {
       eventSourceRef.current.close()

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useAuth } from '@/components/auth/auth-provider'
 import { useClusters } from '@/hooks/use-clusters'
 import { Button } from '@/components/ui/button'
@@ -10,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
 import { LH_TYPES } from '@/lib/constants'
-import type { LHType } from '@/lib/types'
+import type { LHType, LineHaulRequest } from '@/lib/types'
 
 interface RequestFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess: () => void
+  onSuccess: (request?: LineHaulRequest) => void
 }
 
 export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps) {
@@ -39,7 +40,7 @@ export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps)
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/supabase/requests', {
+      const response = await fetch('/api/azure/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -57,6 +58,7 @@ export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps)
         const data = await response.json()
         throw new Error(data.error || 'Failed to create request')
       }
+      const data = await response.json().catch(() => null)
 
       // Reset form
       setFormData({
@@ -66,10 +68,13 @@ export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps)
         lhType: '',
       })
       
-      onSuccess()
+      onSuccess(data?.request)
+      toast.success('Request created')
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create request')
+      const message = err instanceof Error ? err.message : 'Failed to create request'
+      setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
