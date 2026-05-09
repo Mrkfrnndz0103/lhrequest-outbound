@@ -26,20 +26,20 @@ export type RequestsPage = {
 }
 
 type UserRow = {
-  id: string
   name: string | null
   ops_id: string | null
   email: string | null
   role: UserRole | string | null
+  is_active: boolean | null
 }
 
 type ClusterRow = {
-  id: string
-  name: string | null
-  region: string | null
-  column_d: string | null
-  column_e: string | null
-  column_f: string | null
+  hub_name: string | null
+  cluster: string | null
+  region_gen: string | null
+  dock_number: string | null
+  backlogs: number | null
+  backlogs_ts: Date | string | null
 }
 
 type RequestRow = {
@@ -117,6 +117,11 @@ function optionalString(value: string | null): string | undefined {
   return value || undefined
 }
 
+function clusterDisplayName(row: ClusterRow): string {
+  if (row.hub_name && row.cluster) return `${row.hub_name} - ${row.cluster}`
+  return row.cluster || row.hub_name || ''
+}
+
 function likeValue(value: string) {
   return `%${normalizeLikePattern(value)}%`
 }
@@ -148,7 +153,10 @@ function toRequest(row: RequestRow): LineHaulRequest {
 export async function validateUser(identifier: string, loginType: 'fte' | 'backroom'): Promise<User | null> {
   const column = loginType === 'backroom' ? 'ops_id' : 'email'
   const result = await query<UserRow>(
-    `select id, name, ops_id, email, role from public.users where ${column} ilike $1 limit 1`,
+    `select name, ops_id, email, role, "is active" as is_active
+     from public.users
+     where ${column} ilike $1 and "is active" is distinct from false
+     limit 1`,
     [identifier]
   )
 
@@ -178,21 +186,32 @@ export async function getClusters(): Promise<Cluster[]> {
   }
 
   clustersPromise ??= query<ClusterRow>(
-    'select id, name, region, column_d, column_e, column_f from public.clusters order by name asc'
+    `select
+       hub_name,
+       cluster,
+       "Region_gen" as region_gen,
+       "dock_#" as dock_number,
+       backlogs,
+       backlogs_ts
+     from public.clusters
+     order by coalesce(hub_name || ' - ' || cluster, cluster, hub_name) asc`
   )
     .then((result) => {
       const seen = new Set<string>()
       const clusters: Cluster[] = []
 
       for (const row of result.rows) {
-        if (!row.name || seen.has(row.name)) continue
-        seen.add(row.name)
+        const name = clusterDisplayName(row)
+        if (!name || seen.has(name)) continue
+        seen.add(name)
         clusters.push({
-          name: row.name,
-          region: row.region || 'Unknown',
-          columnD: optionalString(row.column_d),
-          columnE: optionalString(row.column_e),
-          columnF: optionalString(row.column_f),
+          name,
+          region: row.region_gen || 'Unknown',
+          hubName: optionalString(row.hub_name),
+          cluster: optionalString(row.cluster),
+          dockNumber: optionalString(row.dock_number),
+          backlogs: row.backlogs ?? undefined,
+          backlogsTs: parseDateString(row.backlogs_ts) || undefined,
         })
       }
 

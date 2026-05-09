@@ -97,7 +97,7 @@ After the migration, production should use:
 ```env
 DATABASE_URL=postgresql://linehaul_app:<password>@<server>.postgres.database.azure.com:5432/linehaul?sslmode=require
 AUTH_SESSION_SECRET=<long-random-secret>
-EVENT_BUS_PROVIDER=postgres
+EVENT_BUS_PROVIDER=azure-postgres
 EVENT_BUS_POLL_INTERVAL_MS=1000
 AZURE_MANAGED_REDIS_URL=
 AZURE_MANAGED_REDIS_TOKEN=
@@ -110,7 +110,7 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-`EVENT_BUS_PROVIDER=postgres` requires a small event bus adapter that polls `request_events` from Azure PostgreSQL. The current Supabase event bus polls the same table through Supabase REST, so the logic can be reused with direct SQL.
+`EVENT_BUS_PROVIDER=azure-postgres` enables the event bus adapter that polls `request_events` from Azure PostgreSQL.
 
 ## Local Setup
 
@@ -140,7 +140,7 @@ Create `.env.local`:
 ```env
 DATABASE_URL=postgresql://linehaul_app:<password>@localhost:5432/linehaul?sslmode=disable
 AUTH_SESSION_SECRET=<generated-secret>
-EVENT_BUS_PROVIDER=postgres
+EVENT_BUS_PROVIDER=azure-postgres
 EVENT_BUS_POLL_INTERVAL_MS=1000
 ```
 
@@ -274,15 +274,15 @@ alter default privileges in schema public grant usage, select on sequences to li
 Seed required data:
 
 ```sql
-insert into public.users (id, name, ops_id, email, role)
+insert into public.users (name, ops_id, email, role, "is active", update_as_of)
 values
-  ('ops-pic-1', 'Test Ops PIC', 'TESTPIC', null, 'OPS_PIC'),
-  ('fte-ops-1', 'Test FTE Ops', null, 'test.ops@example.com', 'FTE_OPS'),
-  ('fte-mm-1', 'Test FTE MM', null, 'test.mm@example.com', 'FTE_MM')
-on conflict (id) do nothing;
+  ('Test Ops PIC', 'TESTPIC', null, 'OPS_PIC', true, now()),
+  ('Test FTE Ops', null, 'test.ops@example.com', 'FTE_OPS', true, now()),
+  ('Test FTE MM', null, 'test.mm@example.com', 'FTE_MM', true, now())
+on conflict do nothing;
 ```
 
-Import real `clusters`, `users`, `requests`, and `request_events` from Supabase using CSV export/import or `pg_dump` if you have direct Postgres access.
+Import real `clusters`, `users`, `requests`, and `request_events` from Supabase using CSV export/import or `pg_dump` if you have direct Postgres access. For `clusters`, use the source columns `hub_name`, `cluster`, `"Region_gen"`, `"dock_#"`, `backlogs`, and `backlogs_ts`.
 
 ## Configure App Service Settings
 
@@ -299,7 +299,7 @@ az webapp config appsettings set `
     WEBSITE_NODE_DEFAULT_VERSION=~22 `
     DATABASE_URL="$DATABASE_URL" `
     AUTH_SESSION_SECRET="$AUTH_SECRET" `
-    EVENT_BUS_PROVIDER="postgres" `
+    EVENT_BUS_PROVIDER="azure-postgres" `
     EVENT_BUS_POLL_INTERVAL_MS="1000"
 ```
 
@@ -331,8 +331,8 @@ Do not expose `DATABASE_URL` to the browser. It must stay server-side only.
 
 | Existing function | PostgreSQL query behavior |
 | --- | --- |
-| `validateUser()` | `select * from users where ops_id = $1 or email = $1 limit 1` |
-| `getClusters()` | `select * from clusters order by name asc` |
+| `validateUser()` | `select name, ops_id, email, role, "is active" from users where ops_id = $1 or email = $1 limit 1` |
+| `getClusters()` | `select hub_name, cluster, "Region_gen", "dock_#", backlogs, backlogs_ts from clusters order by hub_name, cluster` |
 | `getRequests()` | `select * from requests where ... order by request_time desc, id desc limit $limit + 1 offset $offset` |
 | `createRequest()` | `insert into requests (...) values (...) returning *` |
 | `updateRequest()` | `update requests set ... where id = $1 and status = $2 returning *` |

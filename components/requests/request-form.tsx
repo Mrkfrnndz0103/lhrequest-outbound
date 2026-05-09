@@ -34,6 +34,16 @@ export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps)
 
   const selectedCluster = clusters.find(c => c.name === formData.hubCluster)
 
+  const handleClusterChange = (value: string) => {
+    const cluster = clusters.find(c => c.name === value)
+    setFormData(prev => ({
+      ...prev,
+      hubCluster: value,
+      dockNumber: cluster?.dockNumber ?? prev.dockNumber,
+      backlogs: cluster?.backlogs === undefined ? prev.backlogs : String(cluster.backlogs),
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -94,7 +104,7 @@ export function RequestForm({ open, onOpenChange, onSuccess }: RequestFormProps)
             <Label htmlFor="hubCluster">Hub/Cluster</Label>
             <Select
               value={formData.hubCluster}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, hubCluster: value }))}
+              onValueChange={handleClusterChange}
             >
               <SelectTrigger className="bg-secondary/30 border-border">
                 <SelectValue placeholder={clustersLoading ? "Loading..." : "Select hub/cluster"} />

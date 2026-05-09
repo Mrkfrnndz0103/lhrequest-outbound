@@ -20,6 +20,11 @@ export interface User {
 export interface Cluster {
   name: string
   region: string
+  hubName?: string
+  cluster?: string
+  dockNumber?: string
+  backlogs?: number
+  backlogsTs?: string
   columnD?: string
   columnE?: string
   columnF?: string

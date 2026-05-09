@@ -447,6 +447,16 @@ export function EditDialog({ request, open, onOpenChange, onSuccess }: BaseDialo
 
   const selectedCluster = clusters.find(c => c.name === formData.hubCluster)
 
+  const handleClusterChange = (value: string) => {
+    const cluster = clusters.find(c => c.name === value)
+    setFormData(prev => ({
+      ...prev,
+      hubCluster: value,
+      dockNumber: cluster?.dockNumber ?? prev.dockNumber,
+      backlogs: cluster?.backlogs === undefined ? prev.backlogs : String(cluster.backlogs),
+    }))
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!request) return
@@ -501,7 +511,7 @@ export function EditDialog({ request, open, onOpenChange, onSuccess }: BaseDialo
             <Label htmlFor="editHubCluster">Hub/Cluster</Label>
             <Select
               value={formData.hubCluster}
-              onValueChange={(value) => setFormData(prev => ({ ...prev, hubCluster: value }))}
+              onValueChange={handleClusterChange}
             >
               <SelectTrigger className="bg-secondary/30 border-border">
                 <SelectValue placeholder="Select hub/cluster" />

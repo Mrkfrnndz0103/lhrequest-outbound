@@ -70,15 +70,16 @@ The app reads logins from the `users` table.
 Example users:
 
 ```sql
-insert into public.users (id, name, ops_id, email, role)
+insert into public.users (name, ops_id, email, role, "is active", update_as_of)
 values
-  ('user_ops_pic_1', 'Ops PIC User', 'OPSPIC001', null, 'OPS_PIC'),
-  ('user_fte_ops_1', 'FTE Ops User', null, 'fte.ops@example.com', 'FTE_OPS'),
-  ('user_fte_mm_1', 'FTE MM User', null, 'fte.mm@example.com', 'FTE_MM')
-on conflict (id) do nothing;
+  ('Ops PIC User', 'OPSPIC001', null, 'OPS_PIC', true, now()),
+  ('FTE Ops User', null, 'fte.ops@example.com', 'FTE_OPS', true, now()),
+  ('FTE MM User', null, 'fte.mm@example.com', 'FTE_MM', true, now())
+on conflict do nothing;
 ```
 
 Backroom users log in with `ops_id`. FTE users log in with `email`.
+Set `"is active"` to `false` to disable a login without deleting the row.
 
 ## 6. Add Clusters
 
@@ -87,12 +88,32 @@ The request form needs cluster rows.
 Example:
 
 ```sql
-insert into public.clusters (id, name, region)
+insert into public.clusters (
+  hub_name,
+  cluster,
+  "Region_gen",
+  "dock_#",
+  backlogs,
+  backlogs_ts
+)
 values
-  ('cluster_1', 'North Hub', 'North'),
-  ('cluster_2', 'South Hub', 'South')
-on conflict (id) do nothing;
+  ('North Hub', 'Cluster A', 'North', 'DAC 1', 2000, now()),
+  ('South Hub', 'Cluster B', 'South', 'DAC 2', 1500, now());
 ```
+
+Use these column names in DBeaver if you import from CSV:
+
+```txt
+hub_name
+cluster
+Region_gen
+dock_#
+backlogs
+backlogs_ts
+```
+
+The app shows `hub_name - cluster` in the Hub/Cluster dropdown.
+When `dock_#` and `backlogs` are filled in the cluster row, the request form auto-fills them after the user selects the hub/cluster.
 
 ## 7. Put the Connection String in `.env.local`
 
