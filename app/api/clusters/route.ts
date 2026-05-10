@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCachedClusters, getClusters } from '@/lib/azure-database'
+import { getCachedClusters, getClusters } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { withTimeout } from '@/lib/api-timeout'
 import { handleApiError } from '@/lib/api-errors'

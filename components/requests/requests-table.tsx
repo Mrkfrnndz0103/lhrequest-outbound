@@ -236,7 +236,7 @@ export function RequestsTable({
       if (dateTo) params.set('dateTo', dateTo)
       if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
 
-      window.location.href = `/api/azure/requests/export${params.toString() ? `?${params}` : ''}`
+      window.location.href = `/api/requests/export${params.toString() ? `?${params}` : ''}`
       return
     }
 

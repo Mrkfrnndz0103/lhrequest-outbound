@@ -170,9 +170,7 @@ $KEYVAULT_NAME="kv-linehaul-prod"
 Create the resource group:
 
 ```powershell
-az group create `
-  --name $RESOURCE_GROUP `
-  --location $LOCATION
+p
 ```
 
 Create PostgreSQL Flexible Server:
@@ -183,7 +181,7 @@ az postgres flexible-server create `
   --location $LOCATION `
   --name $POSTGRES_NAME `
   --admin-user $POSTGRES_ADMIN `
-  --admin-password "<strong-admin-password>" `
+  --admin-password "Mrkfrnndz0103" `
   --sku-name Standard_B2s `
   --tier Burstable `
   --version 16 `

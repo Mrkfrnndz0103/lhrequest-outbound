@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getRequests } from '@/lib/azure-database'
+import { getRequests } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { handleApiError, validationError } from '@/lib/api-errors'
 import { REQUEST_STATUS_LABELS } from '@/lib/constants'

@@ -170,7 +170,7 @@ export function RejectDialog({ request, open, onOpenChange, onSuccess }: BaseDia
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/azure/requests/${request.id}`, {
+      const response = await fetch(`/api/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -280,7 +280,7 @@ export function AssignDialog({ request, open, onOpenChange, onSuccess }: BaseDia
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/azure/requests/${request.id}`, {
+      const response = await fetch(`/api/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -465,7 +465,7 @@ export function EditDialog({ request, open, onOpenChange, onSuccess }: BaseDialo
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/azure/requests/${request.id}`, {
+      const response = await fetch(`/api/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

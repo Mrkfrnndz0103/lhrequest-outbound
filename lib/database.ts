@@ -16,6 +16,13 @@ type RequestFilters = {
   offset?: number
 }
 
+export type CreateUserInput = {
+  name: string
+  role: UserRole
+  opsId?: string | null
+  email?: string | null
+}
+
 export type RequestsPage = {
   requests: LineHaulRequest[]
   pagination: {
@@ -177,6 +184,29 @@ export async function validateUser(identifier: string, loginType: 'fte' | 'backr
     opsId: user.ops_id,
     email: user.email,
     role: user.role?.toUpperCase() === 'FTE_MM' ? 'FTE_MM' : 'FTE_OPS',
+  }
+}
+
+export async function createUser(data: CreateUserInput): Promise<User> {
+  const name = data.name.trim()
+  const role = data.role
+  const opsId = data.opsId?.trim() || null
+  const email = data.email?.trim().toLowerCase() || null
+
+  const result = await query<UserRow>(
+    `insert into public.users (name, ops_id, email, role, "is active")
+     values ($1, $2, $3, $4, true)
+     returning name, ops_id, email, role, "is active" as is_active`,
+    [name, opsId, email, role]
+  )
+
+  const user = result.rows[0]
+
+  return {
+    name: user.name || name,
+    opsId: user.ops_id,
+    email: user.email,
+    role: user.role as UserRole,
   }
 }
 

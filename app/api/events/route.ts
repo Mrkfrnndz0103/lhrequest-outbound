@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getPendingCounts } from '@/lib/azure-database'
+import { getPendingCounts } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { handleApiError, validationError } from '@/lib/api-errors'
 import { subscribeToRequestEvents, type RequestEvent } from '@/lib/request-events'

@@ -29,7 +29,8 @@ import {
   LogOut, 
   ChevronDown,
   User,
-  Bell
+  Settings,
+  UserPlus
 } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
@@ -42,6 +43,7 @@ export function AppSidebar() {
 
   const showOutbound = user?.role === 'OPS_PIC' || user?.role === 'FTE_OPS'
   const showMidmile = user?.role === 'FTE_MM'
+  const showSettings = user?.role === 'FTE_OPS' || user?.role === 'FTE_MM'
 
   // Helper to match Ops PIC requests with case-insensitive comparison
   const isMyRequest = (r: { opsPicId?: string | null }) => {
@@ -183,6 +185,36 @@ export function AppSidebar() {
                                   {pendingMm}
                                 </span>
                               )}
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
+
+              {/* Settings */}
+              {showSettings && (
+                <Collapsible defaultOpen={pathname.startsWith('/settings')} className="group/collapsible">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton tooltip="Settings">
+                        <Settings className="text-muted-foreground" />
+                        <span>Settings</span>
+                        <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        <SidebarMenuSubItem>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={pathname === '/settings/add-user'}
+                          >
+                            <Link href="/settings/add-user">
+                              <UserPlus className="size-4" />
+                              <span>Add User</span>
                             </Link>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>

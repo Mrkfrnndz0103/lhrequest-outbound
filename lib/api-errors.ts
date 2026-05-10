@@ -52,7 +52,7 @@ export function handleApiError(error: unknown, fallback = 'Unexpected server err
 
   if (error instanceof DatabaseError) {
     const status = error.status >= 500 ? 503 : error.status
-    const message = status === 503 ? 'Azure Database is unavailable. Please try again.' : error.message
+    const message = status === 503 ? 'Database is unavailable. Please try again.' : error.message
     return apiError(message, status, status === 503 ? 'DATABASE_UNAVAILABLE' : 'UNKNOWN_ERROR')
   }
 

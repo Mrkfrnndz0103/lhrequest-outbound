@@ -27,7 +27,7 @@ export function usePendingCount() {
     resetPollingInterval,
     isPollingPaused,
   } = useAdaptiveSWR<PendingCount>(
-    '/api/azure/pending-count',
+    '/api/pending-count',
     {
       adaptivePolling: true,
       pauseWhenHidden: true,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { updateRequest } from '@/lib/azure-database'
+import { updateRequest } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { publishRequestActionEvent } from '@/lib/request-events'
 import { handleApiError, validationError } from '@/lib/api-errors'

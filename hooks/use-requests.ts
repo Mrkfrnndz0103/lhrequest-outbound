@@ -117,7 +117,7 @@ export function useRequests(options?: UseRequestsOptions) {
   if (options?.offset) params.append('offset', String(options.offset))
 
   const queryString = params.toString()
-  const url = enabled ? `/api/azure/requests${queryString ? `?${queryString}` : ''}` : null
+  const url = enabled ? `/api/requests${queryString ? `?${queryString}` : ''}` : null
 
   const refreshInterval = useMemo(() => {
     if (!isOnline) return 0

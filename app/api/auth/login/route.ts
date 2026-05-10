@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateUser } from '@/lib/azure-database'
+import { validateUser } from '@/lib/database'
 import { setAuthCookie } from '@/lib/auth-session'
 import { apiError, handleApiError, validationError } from '@/lib/api-errors'
 import { getClientKey, isRateLimited } from '@/lib/rate-limit'

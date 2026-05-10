@@ -17,10 +17,10 @@ export class DatabaseError extends Error {
 let pool: Pool | null = null
 
 function getConnectionString() {
-  const connectionString = process.env.AZURE_POSTGRES_CONNECTION_STRING || process.env.DATABASE_URL
+  const connectionString = process.env.DATABASE_URL
 
   if (!connectionString) {
-    throw new DatabaseError('Azure PostgreSQL connection string is not configured')
+    throw new DatabaseError('PostgreSQL connection string is not configured')
   }
 
   return connectionString
@@ -51,7 +51,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
     return await getPool().query<T>(text, values)
   } catch (error) {
     throw new DatabaseError(
-      'Unable to query Azure PostgreSQL. Check the connection string, firewall rules, and database availability.',
+      'Unable to query PostgreSQL. Check the connection string, firewall rules, and database availability.',
       503,
       error instanceof Error ? { message: error.message, code: 'code' in error ? error.code : undefined } : error
     )

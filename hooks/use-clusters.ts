@@ -6,7 +6,7 @@ import type { Cluster } from '@/lib/types'
 
 export function useClusters() {
   const { data, error, isLoading } = useSWR<{ clusters: Cluster[] }>(
-    '/api/azure/clusters',
+    '/api/clusters',
     fetchJson,
     {
       revalidateOnFocus: false,

@@ -1,10 +1,10 @@
 import type { EventBus } from './event-bus'
 import { localEventBus } from './local-event-bus'
-import { azurePostgresBus } from './azure-postgres-bus'
+import { postgresEventBus } from './postgres-event-bus'
 
 export function getEventBus(): EventBus {
-  if (process.env.EVENT_BUS_PROVIDER === 'azure-postgres') {
-    return azurePostgresBus
+  if (process.env.EVENT_BUS_PROVIDER === 'postgres') {
+    return postgresEventBus
   }
 
   return localEventBus

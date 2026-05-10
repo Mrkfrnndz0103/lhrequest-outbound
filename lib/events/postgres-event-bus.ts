@@ -50,7 +50,7 @@ function notify(event: RequestEvent) {
     try {
       subscriber(event)
     } catch (error) {
-      console.error('Azure PostgreSQL event subscriber failed:', error)
+      console.error('PostgreSQL event subscriber failed:', error)
     }
   })
 }
@@ -80,7 +80,7 @@ async function pollRequestEvents() {
       notify(toRequestEvent(row))
     }
   } catch (error) {
-    console.error('Failed to poll Azure PostgreSQL request events:', error)
+    console.error('Failed to poll PostgreSQL request events:', error)
   } finally {
     isPolling = false
   }
@@ -102,7 +102,7 @@ function stopPollingIfIdle() {
   pollInterval = null
 }
 
-export const azurePostgresBus: EventBus = {
+export const postgresEventBus: EventBus = {
   async publish() {
     // Cross-instance delivery happens through the durable request_events table.
   },

@@ -13,6 +13,11 @@ interface SoundContextType {
 
 const SoundContext = createContext<SoundContextType | undefined>(undefined)
 
+function isExpectedMediaPlaybackError(error: unknown) {
+  if (!(error instanceof DOMException)) return false
+  return error.name === 'AbortError' || error.name === 'NotAllowedError'
+}
+
 export function SoundProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { pendingOps, pendingMm } = usePendingCount()
@@ -34,7 +39,7 @@ export function SoundProvider({ children }: { children: ReactNode }) {
     })
   }, [requests, user])
 
-  // Initialize sound player on first user interaction
+  // Initialize sound player on first user interaction.
   useEffect(() => {
     const initSound = () => {
       if (!audioRef.current) {
@@ -45,23 +50,17 @@ export function SoundProvider({ children }: { children: ReactNode }) {
       }
 
       const audio = audioRef.current
-      audio.muted = true
-      audio
-        .play()
-        .then(() => {
-          audio.pause()
-          audio.currentTime = 0
-          audio.muted = false
-          setSoundReady(true)
-        })
-        .catch((error) => {
-          console.error('Error unlocking notification sound:', error)
-        })
+      audio.muted = false
+      audio.load()
+      setSoundReady(true)
+
+      document.removeEventListener('click', initSound)
+      document.removeEventListener('touchstart', initSound)
     }
 
     // Initialize on first click/touch
-    document.addEventListener('click', initSound, { once: true })
-    document.addEventListener('touchstart', initSound, { once: true })
+    document.addEventListener('click', initSound)
+    document.addEventListener('touchstart', initSound)
 
     return () => {
       document.removeEventListener('click', initSound)
@@ -77,10 +76,14 @@ export function SoundProvider({ children }: { children: ReactNode }) {
       audio.volume = 1.0
       audio.currentTime = 0
       audio.play().catch(error => {
-        console.error('Error playing notification sound:', error)
+        if (!isExpectedMediaPlaybackError(error)) {
+          console.error('Error playing notification sound:', error)
+        }
       })
     } catch (error) {
-      console.error('Error playing notification sound:', error)
+      if (!isExpectedMediaPlaybackError(error)) {
+        console.error('Error playing notification sound:', error)
+      }
     }
   }, [])
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCachedPendingCounts, getPendingCounts } from '@/lib/azure-database'
+import { getCachedPendingCounts, getPendingCounts } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { withTimeout } from '@/lib/api-timeout'
 import { handleApiError } from '@/lib/api-errors'

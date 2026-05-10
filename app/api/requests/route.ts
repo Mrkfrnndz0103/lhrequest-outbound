@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCachedRequests, getRequests, createRequest } from '@/lib/azure-database'
+import { getCachedRequests, getRequests, createRequest } from '@/lib/database'
 import { isAuthError, requireUser } from '@/lib/api-auth'
 import { withTimeout } from '@/lib/api-timeout'
 import { publishRequestEvent } from '@/lib/request-events'

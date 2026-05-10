@@ -96,7 +96,7 @@ export default function LHRequestPage() {
     setLastUpdated(new Date())
 
     try {
-      const response = await fetch(`/api/azure/requests/${request.id}`, {
+      const response = await fetch(`/api/requests/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
